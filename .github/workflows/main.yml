@@ -1,11 +1,16 @@
-name: my first workflow
+name: Debug
 
-on: [push, workflow_dispatch]
+on: [push , workflow_dispatch]
 
 jobs:
-  my-first-job:
+  debug:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
+      - uses: actions/checkout@v4
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
+      - name: Wait
+        run: sleep 3600
