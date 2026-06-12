@@ -1,35 +1,74 @@
-name: Serve Site
+name: Public Web Server
 
-on: [push , workflow_dispatch]
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
-  serve:
+  webserver:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Start server
+      - name: Install ngrok
         run: |
-          python3 -m http.server 8080 &
+          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+          tar -xzf ngrok-v3-stable-linux-amd64.tgz
+          chmod +x ngrok
+          sudo mv ngrok /usr/local/bin/
+
+      - name: Verify ngrok
+        run: |
+          which ngrok
+          ngrok version
+
+      - name: Configure ngrok
+        run: |
+          ngrok config add-authtoken 3BmuLJ4IWkIioUUejPh20sROtlV_4cbf4iZcnTibgLr2AkLuz
+
+      - name: Start HTTP Server
+        run: |
+          nohup python3 -m http.server 8080 > server.log 2>&1 &
           sleep 5
 
-      - name: Start ngrok
+      - name: Start ngrok Tunnel
         run: |
-         ngrok config add-authtoken 3BmuLJ4IWkIioUUejPh20sROtlV_4cbf4iZcnTibgLr2AkLuz
-          ngrok http 8080 &
-          sleep 10
+          nohup ngrok http 8080 > ngrok.log 2>&1 &
+          sleep 15
 
-      - name: Stay alive
+      - name: Show Public URL
         run: |
-          sleep 21000
+          curl -s http://127.0.0.1:4040/api/tunnels > tunnels.json
 
-      - name: Trigger replacement workflow
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          echo "========== TUNNELS =========="
+          cat tunnels.json
+
+          URL=$(grep -o 'https://[^"]*' tunnels.json | head -1)
+
+          echo ""
+          echo "==========================="
+          echo "PUBLIC URL:"
+          echo "$URL"
+          echo "==========================="
+
+      - name: Run Server For 5h45m
         run: |
-          curl -X POST \
-          -H "Authorization: token $GH_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          https://api.github.com/repos/${{ github.repository }}/actions/workflows/serve.yml/dispatches \
-          -d '{"ref":"main"}'
+          sleep 20700
+
+      - name: Start Replacement Workflow
+        run: |
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/serve.yml/dispatches \
+            -d '{"ref":"main"}'
+
+      - name: Wait For New Runner
+        run: |
+          sleep 900
