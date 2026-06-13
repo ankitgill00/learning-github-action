@@ -12,63 +12,67 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install ngrok
         run: |
-          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-          tar -xzf ngrok-v3-stable-linux-amd64.tgz
-          chmod +x ngrok
-          sudo mv ngrok /usr/local/bin/
+          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+          sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
 
-      - name: Verify ngrok
-        run: |
-          which ngrok
+          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | \
+          sudo tee /etc/apt/sources.list.d/ngrok.list
+
+          sudo apt update
+          sudo apt install ngrok -y
+
           ngrok version
 
       - name: Configure ngrok
         run: |
-          ngrok config add-authtoken 3BmuLJ4IWkIioUUejPh20sROtlV_4cbf4iZcnTibgLr2AkLuz
+          ngrok config add-authtoken 3F4C30mGQYNRtjh0p3vkfXi5dtp_6wpXk6juZWDUxLLH53J8K
 
       - name: Start HTTP Server
         run: |
           nohup python3 -m http.server 8080 > server.log 2>&1 &
           sleep 5
 
-      - name: Start ngrok Tunnel
+      - name: Start ngrok
         run: |
-          nohup ngrok http 8080 > ngrok.log 2>&1 &
-          sleep 15
+          nohup ngrok http 8080 --log=stdout > ngrok.log 2>&1 &
+          sleep 20
 
-      - name: Show Public URL
+          echo "===== NGROK LOG ====="
+          cat ngrok.log
+
+      - name: Get Public URL
         run: |
-          curl -s http://127.0.0.1:4040/api/tunnels > tunnels.json
+          for i in {1..30}; do
+            curl -s http://127.0.0.1:4040/api/tunnels > tunnels.json && break
+            sleep 2
+          done
 
-          echo "========== TUNNELS =========="
           cat tunnels.json
 
           URL=$(grep -o 'https://[^"]*' tunnels.json | head -1)
 
           echo ""
-          echo "==========================="
           echo "PUBLIC URL:"
           echo "$URL"
-          echo "==========================="
 
-      - name: Run Server For 5h45m
+      - name: Keep Alive
         run: |
           sleep 20700
 
-      - name: Start Replacement Workflow
+      - name: Trigger New Run
+        continue-on-error: true
         run: |
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/serve.yml/dispatches \
             -d '{"ref":"main"}'
 
-      - name: Wait For New Runner
+      - name: Final Wait
         run: |
           sleep 900
